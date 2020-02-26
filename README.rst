@@ -34,3 +34,21 @@ Quick start::
     >>>   order = order
     >>> )
     >>> print(query)
+
+    select
+      "id",
+      "first_name",
+      "last_name",
+      "company_name"
+    from
+      "sample_uk"
+    where
+      ("first_name" like '%%' || ? || '%%' and "last_name" like '%%' || ? || '%%')
+    order by
+      "first_name" asc,
+      "last_name" asc
+    limit 0, 10
+
+    >>> print(values)
+    
+    ['John', 'Smith']
