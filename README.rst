@@ -43,7 +43,7 @@ Quick start::
     from
       "sample_uk"
     where
-      ("first_name" like '%%' || ? || '%%' and "last_name" like '%%' || ? || '%%')
+      ("first_name" like '%' || ? || '%' and "last_name" like '%' || ? || '%')
     order by
       "first_name" asc,
       "last_name" asc

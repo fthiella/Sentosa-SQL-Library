@@ -100,7 +100,8 @@ class SSqll:
 
 	def __quote(self, name: str, quote: str) -> str:
 		"""returns a quoted string"""
-		# TODO: escape special characters
+		# TODO: in the unluky event that the column name contains special characters,
+		# those special characters has to be quoted as well...
 		return quote + name + quote;
 
 	def __whereFilter(self, col: str, searchcriteria: str = "sub") -> str:
@@ -184,7 +185,7 @@ class SSqll:
 
 	def selectQuery(self, **kwargs):
 		"""
-		returns the select query (with placeholders) and the values for the placeholders
+		returns the select query (with placeholders) and the list of values that match the placeholders
 
 		order:
 		  columns and direction to order by (default to the constructor order by columns)
