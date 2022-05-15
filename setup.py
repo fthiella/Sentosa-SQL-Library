@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(name='Sentosa SQL Library',
-      version='0.1',
+      version='0.2',
       description='SQL Backend Library for Datatables and Frontend Apps',
       url='http://github.com/fthiella/Sentosa-SQL-Library',
       author='Federico Thiella',
@@ -16,4 +16,5 @@ setup(name='Sentosa SQL Library',
       test_suite='nose.collector',
       tests_require=['nose'],
       include_package_data=True,
+      install_require=['werkzeug']
 )

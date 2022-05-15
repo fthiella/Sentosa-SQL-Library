@@ -2,6 +2,9 @@
 """
 Python Backend "Sentosa SQL Library" for DataTables and Frontend applications
 """
+from werkzeug.datastructures import ImmutableDict
+import re
+import pprint
 
 __version__ = "0.1"
 __title__ = "Sentosa SQL Library"
@@ -15,6 +18,58 @@ __license__ = "MIT"
 __copyright__ = "Copyright (c) 2020 Federico Thiella" 
 
 # TODO: read here later: https://python-packaging.readthedocs.io/en/latest/minimal.html
+
+# parse Datatable Args
+
+class __GrowingList(list):
+	def __setitem__(self, index, value):
+		if index >= len(self):
+			self.extend([None]*(index + 1 - len(self)))
+		list.__setitem__(self, index, value)
+
+def parseDatatableArgs(args):
+	p = {}
+	for a in args:
+		if a in ['draw', 'start', 'length']:
+			p[a]=args.get(a)
+		else:
+			m = re.match(r'^(\w+)(?:\[(\w+)\])(?:\[(\w+)\])?(?:\[(\w+)\])?$', a)
+			if m:
+				g = m.groups()
+				if g[0]=='search' and g[1] in ['value', 'regex'] and g[2] is None and g[3] is None:
+					if 'search' not in p:
+						p['search'] = {}
+					p['search'][g[1]] = args.get(a)
+				elif g[0]=='order' and g[1].isdigit() and g[2] in ['column','dir'] and g[3] is None:
+					if 'order' not in p:
+						p['order'] = __GrowingList()
+					if len(p['order'])<int(g[1])+1:
+						p['order'][int(g[1])]={}
+					p['order'][int(g[1])][g[2]] = args.get(a)
+				elif g[0]=='columns' and g[1].isdigit() and g[2] in ['data', 'name', 'searchable', 'orderable'] and g[3] is None:
+					if 'columns' not in p:
+						p['columns'] = __GrowingList()
+					if len(p['columns'])<int(g[1])+1:
+						p['columns'][int(g[1])]={}
+					p['columns'][int(g[1])][g[2]] = args.get(a)
+				elif g[0]=='columns' and g[1].isdigit() and g[2]=='search' and g[3] in ['value','regex']:
+					if 'search' not in p['columns'][int(g[1])]:
+						p['columns'][int(g[1])]['search']={}
+					p['columns'][int(g[1])]['search'][g[3]]=args.get(a)
+				else:
+					print("{} non elaborato".format(a))
+			else:
+				print("{} non elaborato".format(a))
+
+	pp = pprint.PrettyPrinter(indent=4)
+	print("---\nArgs:\n\n")
+	pp.pprint(args)
+	print("---\nParsed:\n\n")
+	pp.pprint(p)
+	print("---")
+
+	return p
+
 # TODO: how to quote a string with quotes? or any other special characters?
 
 DBMS_MAP = {
