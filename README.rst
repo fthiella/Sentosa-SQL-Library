@@ -55,7 +55,7 @@ Quick start::
 
     >>>> rows = execute_db(query, values)
 
-Flask backend basic example:
+Flask backend basic example::
 
     @app.route("/api/table.json")
     def table_json():
