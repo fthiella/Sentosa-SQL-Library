@@ -1,12 +1,16 @@
+import sys
+sys.path.append("..\\..")
+import ssll.utils
+
 import unittest
 import re
-import sqlite3
-
-from sqlite3 import Error
-import ssqll
 import os
 
-a_datatable = {
+from pprint import pprint
+
+cases = [
+# first
+[{
     '_':'1652600072328',
     'columns[0][data]':'0',
     'columns[0][name]':'',
@@ -39,30 +43,32 @@ a_datatable = {
     'search[regex]':'false',
     'search[value]':'',
     'start':'0'
-}
-
-a_expected = {
-    'columns': [
-        {'data': '0', 'name': '', 'orderable': 'true', 'search': {'regex': 'false', 'value': ''}, 'searchable': 'true'},
-        {'data': '1', 'name': '', 'orderable': 'true', 'search': {'regex': 'false', 'value': ''}, 'searchable': 'true'},
-        {'data': '2', 'name': '', 'orderable': 'true', 'search': {'regex': 'false', 'value': ''}, 'searchable': 'true'},
-        {'data': '3', 'name': '', 'orderable': 'true', 'search': {'regex': 'false', 'value': ''}, 'searchable': 'true'}
-    ],
+},
+{
+    'columns': {
+        0: {'data': '0', 'name': '', 'orderable': 'true', 'search': {'regex': 'false', 'value': ''}, 'searchable': 'true'},
+        1: {'data': '1', 'name': '', 'orderable': 'true', 'search': {'regex': 'false', 'value': ''}, 'searchable': 'true'},
+        2: {'data': '2', 'name': '', 'orderable': 'true', 'search': {'regex': 'false', 'value': ''}, 'searchable': 'true'},
+        3: {'data': '3', 'name': '', 'orderable': 'true', 'search': {'regex': 'false', 'value': ''}, 'searchable': 'true'}
+    },
     'draw': '1',
     'length': '10',
-    'order': [
-        {'column': '0', 'dir': 'asc'}
-    ],
+    'order': {
+        0: {'column': '0', 'dir': 'asc'}
+    },
     'search': {'regex': 'false', 'value': ''},
-    'start': '0'
-}
+    'start': '0',
+    '_': '1652600072328'
+}],
+
+]
 
 class TestArgs(unittest.TestCase):
 
-	def test_records(self):
-		a_parsed = ssqll.parseDatatableArgs(a_datatable)
-
-		self.assertEqual(a_parsed, a_expected)
+    def test_records(self):
+        for c in cases:
+            a_parsed = ssll.utils.parseDatatableArgs(c[0])
+            self.assertEqual(a_parsed, c[1])
 
 if __name__ == '__main__':
-	unittest.main()
+    unittest.main()
