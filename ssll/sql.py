@@ -74,6 +74,8 @@ class Datasource:
           (optional) list of columns to filter by
         move:
           search, goto, forwards, backwards
+        placeholder:
+          dynamic placeholder (? or %s) for psycopg2 compatibility
         """
 
         # TODO: check if input is okay
@@ -84,11 +86,17 @@ class Datasource:
         self.limit = kwargs['limit'] if 'limit' in kwargs else None
         self.dbms = kwargs['dbms'] if 'dbms' in kwargs else None
         self.move = kwargs['move'] if 'move' in kwargs else 'search'
+        self.placeholder = kwargs['placeholder'] if 'placeholder' in kwargs else '?'
 
     def __quote(self, name: str, quote: str) -> str:
         """returns a quoted string"""
         # TODO: in the unluky event that the column name contains special characters,
         # those special characters has to be quoted as well...
+        
+        # handle alias with dot (es. m.doc_type)
+        if '.' in name:
+            parts = name.split('.')
+            return f"{parts[0]}.{quote}{parts[1]}{quote}"
         return quote + name + quote
 
     def __whereFilter(self, col: str, searchcriteria: str = "sub") -> str:
@@ -96,7 +104,10 @@ class Datasource:
         given a column name col, the type of search searchcriteria (=, like, ilike, sub)
         returns a single where statement
         """
-        return DBMS_MAP[self.dbms]["search_map"][searchcriteria].format(
+        # apply dynamic placeholder
+        raw_statement = DBMS_MAP[self.dbms]["search_map"][searchcriteria]
+        adapted_statement = raw_statement.replace('?', self.placeholder)
+        return adapted_statement.format(
             self.__quote(
                 col,
                 DBMS_MAP[self.dbms]["quote"]
@@ -148,7 +159,7 @@ class Datasource:
                         ))
                 # TODO: try to use whereFilter, if possible
                 # o .. deve diventare searchcriteria
-                or_where.append(self.__quote(f_move[i-1]['name'], DBMS_MAP[kwargs["dbms"]]['quote']) + o[kwargs["move"]] + "?")
+                or_where.append(self.__quote(f_move[i-1]['name'], DBMS_MAP[kwargs["dbms"]]['quote']) + o[kwargs["move"]] + self.placeholder)
                 m_where.append('(' + ' and '.join(or_where) + ')')
 
                 m_data.extend(list(map(lambda x: x['search'], f_move[0:i])))
@@ -172,6 +183,39 @@ class Datasource:
             'where': " and ".join(q_where),
             'value': m_data + s_data
         }
+
+    def whereQuery(self, **kwargs):
+        """
+        Return WHERE and its associated values array.
+        For hibrid or union queries.
+        """
+        more_filters = kwargs['filters'] if 'filters' in kwargs else []
+        all_filters = self.filters + more_filters
+
+        if len(all_filters) > 0:
+            q_filters = self.__conditions(
+                filters=all_filters,
+                move=self.move,
+                dbms=self.dbms
+            )
+            return " AND " + q_filters['where'], q_filters['value']
+        return "", []
+
+    def limitPoolQuery(self, default_pool_size=40):
+        """
+        Return just LIMIT correctly formatted for DBMS
+        """
+        return "\n" + DBMS_MAP[self.dbms].get("limit", "").format(0, default_pool_size)
+
+    def paginateResults(self, final_list, **kwargs):
+        """
+        Paginate results
+        """
+        start = kwargs.get('start', self.limit.get('start', 0) if self.limit else 0)
+        length = kwargs.get('length', self.limit.get('length', 5) if self.limit else 5)
+        return final_list[start : start + length]
+
+    # ===========================================================================================
 
     def selectQuery(self, **kwargs):
         """
