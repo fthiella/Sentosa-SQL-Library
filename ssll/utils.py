@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Python Backend "Sentosa SQL Library" for DataTables and Frontend applications
+SQL Backend Library for AI, Datatables and Frontend Apps
 """
 import re
 
@@ -24,7 +24,7 @@ def parseDatatableArgs(args):
             if m:
                 g = m.groups()
 
-                if g[0] not in p:
+                if __int_str(g[0]) not in p:
                     p[__int_str(g[0])] = {}
 
                 if g[1] is None:

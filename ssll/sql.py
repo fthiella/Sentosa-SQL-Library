@@ -1,17 +1,27 @@
 # -*- coding: utf-8 -*-
 
-# TODO: how to quote a string with quotes?
-# or any other special characters?
-
 DBMS_MAP = {
     'SQLite': {
         "delimiter":   ',',
         "quote":       '"',
         "search_map": {
-            '=':     '{}=?',
-            'like':  '{} like ? || \'%\'',
-            'ilike': '{} like ? || \'%\'',
-            'sub':   '{} like \'%\' || ? || \'%\'',
+            '=':            '{}=?',
+            '!=':           '{}!=?',
+            '>':            '{}>?',
+            '>=':           '{}>=?',
+            '<':            '{}<?',
+            '<=':           '{}<=?',
+            'starts_with':  '{} glob ? || \'*\'',
+            'ends_with':    '{} glob \'*\' || ?',     # <-- Corretto
+            'contains':     '{} glob \'*\' || ? || \'*\'',
+            'istarts_with': '{} like ? || \'%\'',
+            'iends_with':   '{} like \'%\' || ?',
+            'icontains':    '{} like \'%\' || ? || \'%\'',
+            'in':           '{} in ({})',
+            'notin':        '{} not in ({})',
+            'reverse_in':   '{} in ({})',
+            'null':         '{} is null',
+            'notnull':      '{} is not null',
         },
         "limit":  'limit {0}, {1}',
     },
@@ -19,10 +29,25 @@ DBMS_MAP = {
         "delimiter":   ',',
         "quote":       '"',
         "search_map": {
-            '=':     '{}=?',
-            'like':  '{} like ? || \'%\'',
-            'ilike': '{} ilike ? || \'%\'',
-            'sub':   '{} like \'%\' || ? || \'%\'',
+            '=':            '{}=?',
+            '!=':           '{}!=?',
+            '>':            '{}>?',
+            '>=':           '{}>=?',
+            '<':            '{}<?',
+            '<=':           '{}<=?',
+            'starts_with':  '{} like ? || \'%\'',
+            'ends_with':    '{} like \'%\' || ?',     # <-- Corretto
+            'contains':     '{} like \'%\' || ? || \'%\'',
+            'istarts_with': '{} ilike ? || \'%\'',
+            'iends_with':   '{} ilike \'%\' || ?',
+            'icontains':    '{} ilike \'%\' || ? || \'%\'',
+            'in':           '{} in ({})',
+            'notin':        '{} not in ({})',
+            'reverse_in':   '{} in ({})',
+            'null':         '{} is null',
+            'notnull':      '{} is not null',
+            'fts':          "{} @@ websearch_to_tsquery('italian', ?)",
+            'fts_query':    "to_tsvector('italian', coalesce({}, '')) @@ websearch_to_tsquery('italian', ?)",
         },
         "limit": 'limit {1} offset {0}',
     },
@@ -30,10 +55,23 @@ DBMS_MAP = {
         "delimiter": ',',
         "quote":     '`',
         "search_map": {
-            '=':     '{}=?',
-            'like':  '{} like concat(?,\'%\')',
-            'ilike': '{} like concat(?,\'%\')',
-            'sub':   '{} like concat(?,\'%\')',
+            '=':            '{}=?',
+            '!=':           '{}!=?',
+            '>':            '{}>?',
+            '>=':           '{}>=?',
+            '<':            '{}<?',
+            '<=':           '{}<=?',
+            'starts_with':  '{} like binary concat(?, \'%\')',
+            'ends_with':    '{} like binary concat(\'%\', ?)', # <-- Corretto
+            'contains':     '{} like binary concat(\'%\', ?, \'%\')',
+            'istarts_with': '{} like concat(?, \'%\')',
+            'iends_with':   '{} like concat(\'%\', ?)',       # <-- Corretto
+            'icontains':    '{} like concat(\'%\', ?, \'%\')',
+            'in':           '{} in ({})',
+            'notin':        '{} not in ({})',
+            'reverse_in':   '{} in ({})',
+            'null':         '{} is null',
+            'notnull':      '{} is not null',
         },
         "limit": 'limit {0}, {1}',
     },
@@ -41,77 +79,160 @@ DBMS_MAP = {
         "delimiter": ',',
         "quote":     '"',
         "search_map": {
-            '=':     '{}=?',
-            'like':  '{} like ? || \'%\'',
-            'ilike': 'regexp_like({}, \'^\' || ?, \'i\')',
-            'sub':   '{} like \'%\' || ? || \'%\'',
+            '=':            '{}=?',
+            '!=':           '{}!=?',
+            '>':            '{}>?',
+            '>=':           '{}>=?',
+            '<':            '{}<?',
+            '<=':           '{}<=?',
+            'starts_with':  '{} like ? || \'%\'',
+            'ends_with':    '{} like \'%\' || ?',
+            'contains':     '{} like \'%\' || ? || \'%\'',
+            'istarts_with': 'regexp_like({}, \'^\' || ?, \'i\')',
+            'iends_with':   'regexp_like({}, ? || \'$\', \'i\')',
+            'icontains':    'regexp_like({}, ?, \'i\')',
+            'in':           '{} in ({})',
+            'notin':        '{} not in ({})',
+            'reverse_in':   '{} in ({})',
+            'null':         '{} is null',
+            'notnull':      '{} is not null',
         },
         "top": ' {columns} from (select qqq.*, rownum rrr from (select ',
         "limit": ') qqq where rownum <= {2}) where rrr>{0}',
     }
 }
 
-
 class Datasource:
     """
     Sentosa Sql Class
-    Sql queries for DataTables and any other Frontend application
+    Sql queries for DataTables, LLM outputs and any other Frontend application
     """
 
     def __init__(self, **kwargs):
-        """
-        Sentosa Sql Class Initialization
+        self.source = kwargs.get('source', None)
+        self.raw_source = kwargs.get('raw_source', False)
 
-        dbms:
-          SQLite, Pg, mysql, Oracle
-        source:
-          source table, view, or query
-        columns:
-          list of columns to return
-        order:
-          (optional) list of columns to orer by
-        filters:
-          (optional) list of columns to filter by
-        move:
-          search, goto, forwards, backwards
-        placeholder:
-          dynamic placeholder (? or %s) for psycopg2 compatibility
-        """
+        self.columns = kwargs.get('columns', None)
+        self.order = kwargs.get('order', [])
+        self.filters = kwargs.get('filters', [])
 
-        # TODO: check if input is okay
-        self.source = kwargs['source'] if 'source' in kwargs else None
-        self.columns = kwargs['columns'] if 'columns' in kwargs else None
-        self.order = kwargs['order'] if 'order' in kwargs else []
-        self.filters = kwargs['filters'] if 'filters' in kwargs else []
-        self.limit = kwargs['limit'] if 'limit' in kwargs else None
-        self.dbms = kwargs['dbms'] if 'dbms' in kwargs else None
-        self.move = kwargs['move'] if 'move' in kwargs else 'search'
-        self.placeholder = kwargs['placeholder'] if 'placeholder' in kwargs else '?'
+        # --- backwards compatibility, to be removed
+        #self.columns = self.__shim_legacy_json(kwargs.get('columns', None))
+        #self.order = self.__shim_legacy_json(kwargs.get('order', []))
+        #self.filters = self.__shim_legacy_json(kwargs.get('filters', []))
+        # ---
+
+        self.limit = kwargs.get('limit', None)
+        self.dbms = kwargs.get('dbms', None)
+        self.move = kwargs.get('move', 'search')
+        self.placeholder = kwargs.get('placeholder', '?')
+
+        self.fts_language = kwargs.get('fts_language', 'italian')
+
+        if self.dbms not in DBMS_MAP:
+            raise ValueError(f"Unknown dbms '{self.dbms}'. Valid: {list(DBMS_MAP)}")
+
+    def __shim_legacy_json(self, items):
+        """
+        backwards compatibility, to be removed
+        """
+        if not items:
+            return items
+            
+        for item in items:
+            # 1. Traduzione Chiavi
+            if 'name' in item and 'field' not in item:
+                item['field'] = item['name']
+            if 'searchcriteria' in item and 'operator' not in item:
+                item['operator'] = item['searchcriteria']
+            if 'search' in item and 'value' not in item:
+                item['value'] = item['search']
+                
+            # 2. Traduzione Operatori (Ho aggiunto anche like e ilike per sicurezza)
+            op = item.get('operator')
+            if op == 'sub':
+                item['operator'] = 'contains'
+            elif op == 'like':
+                item['operator'] = 'starts_with'
+            elif op == 'ilike':
+                item['operator'] = 'icontains'
+                
+        return items
 
     def __quote(self, name: str, quote: str) -> str:
         """returns a quoted string"""
-        # TODO: in the unluky event that the column name contains special characters,
-        # those special characters has to be quoted as well...
-        
-        # handle alias with dot (es. m.doc_type)
+        if not name:
+            raise ValueError(f"field name is missing or empty")
+
         if '.' in name:
             parts = name.split('.')
             return f"{parts[0]}.{quote}{parts[1]}{quote}"
+
         return quote + name + quote
 
-    def __whereFilter(self, col: str, searchcriteria: str = "sub") -> str:
+    def __whereFilter(self, col: str, searchcriteria: str = "icontains", search_value=None) -> str:
         """
-        given a column name col, the type of search searchcriteria (=, like, ilike, sub)
+        given a column name col, the type of search searchcriteria
         returns a single where statement
         """
-        # apply dynamic placeholder
+        if searchcriteria not in DBMS_MAP[self.dbms]["search_map"]:
+            searchcriteria = 'icontains'
+            
         raw_statement = DBMS_MAP[self.dbms]["search_map"][searchcriteria]
-        adapted_statement = raw_statement.replace('?', self.placeholder)
-        return adapted_statement.format(
-            self.__quote(
-                col,
-                DBMS_MAP[self.dbms]["quote"]
-            ))
+
+        # Gestione specifica per l'operatore IN e NOT IN
+        if searchcriteria in ['in', 'notin']:
+            if not isinstance(search_value, (list, tuple)):
+                search_value = [search_value] if search_value is not None else []
+            
+            if self.placeholder == '%s':
+                raw_statement = raw_statement.replace('%', '%%')
+
+            placeholders_str = ", ".join([self.placeholder] * len(search_value))
+            raw_statement = raw_statement.format("{}", placeholders_str)
+
+        elif searchcriteria in ['fts', 'fts_query']:
+            if self.dbms not in ['Pg']:
+                raise ValueError(f"Operator '{searchcriteria}' is not supported by {self.dbms}")
+            raw_statement = raw_statement.replace('italian', self.fts_language)
+            if self.placeholder == '%s':
+                raw_statement = raw_statement.replace('%', '%%')
+            raw_statement = raw_statement.replace('?', self.placeholder)
+
+        # Gestione specifica per REVERSE IN (OR su più colonne)
+        elif searchcriteria == 'reverse_in':
+            col_list = [c.strip() for c in col.split(',')]
+            parsed_cols = []
+            for c in col_list:
+                if self.dbms == 'Pg' and '->>' in c:
+                    parts = c.split('->>')
+                    main_column = self.__quote(parts[0].strip(), DBMS_MAP[self.dbms]["quote"])
+                    json_key = parts[1].strip()
+                    parsed_cols.append(f"{main_column}->>'{json_key}'")
+                else:
+                    parsed_cols.append(self.__quote(c, DBMS_MAP[self.dbms]["quote"]))
+            
+            return f"{self.placeholder} IN ({', '.join(parsed_cols)})"
+            
+        else:
+            if self.placeholder == '%s':
+                raw_statement = raw_statement.replace('%', '%%')
+            raw_statement = raw_statement.replace('?', self.placeholder)
+
+        # Gestione avanzata campi JSONB specifica per PostgreSQL (Pg)
+        if self.dbms == 'Pg' and '->>' in col:
+            parts = col.split('->>')
+            main_column = self.__quote(parts[0].strip(), DBMS_MAP[self.dbms]["quote"])
+            json_key = parts[1].strip()
+            
+            if searchcriteria in ['>', '>=', '<', '<=']:
+                sql_field = f"({main_column}->>'{json_key}')::numeric"
+            else:
+                sql_field = f"{main_column}->>'{json_key}'"
+                
+            return raw_statement.format(sql_field)
+
+        return raw_statement.format(self.__quote(col, DBMS_MAP[self.dbms]["quote"]))
 
     def __limitFilterTop(self, **kwargs):
         return DBMS_MAP[kwargs["dbms"]].get("top", "").format(
@@ -132,21 +253,16 @@ class Datasource:
         if ord not in ['asc', 'desc']:
             raise ValueError("order must be 'asc' or 'desc'")
 
-        if inv and ord == 'asc':
-            return 'desc'
-        if inv and ord == 'desc':
-            return 'asc'
+        if inv:
+            return 'desc' if ord == 'asc' else 'asc'
         return ord
 
     def __conditions(self, **kwargs):
         o = {'find': '=', 'forwards': '>', 'backwards': '<'}
 
-        # divide filters by type: move columns vs others
-
+        # Ripristinato 'search' come default per la logica interna
         f_move = list(filter(lambda x: x.get('type', 'search') == 'move',   kwargs['filters']))
         f_search = list(filter(lambda x: x.get('type', 'search') == 'search', kwargs['filters']))
-
-        # calculate move filters
 
         m_where = []
         m_data = []
@@ -154,24 +270,41 @@ class Datasource:
         if kwargs["move"] in ['find', 'forwards', 'backwards']:
             for i in range(len(f_move), 0, -1):
                 or_where = list(map(
-                        lambda x: self.__whereFilter(col=x['name'], searchcriteria='='),
+                        lambda x: self.__whereFilter(col=x.get('field'), searchcriteria='='),
                         f_move[0:i-1]
                         ))
-                # TODO: try to use whereFilter, if possible
-                # o .. deve diventare searchcriteria
-                or_where.append(self.__quote(f_move[i-1]['name'], DBMS_MAP[kwargs["dbms"]]['quote']) + o[kwargs["move"]] + self.placeholder)
+                
+                m_statement = self.__quote(f_move[i-1].get('field'), DBMS_MAP[kwargs["dbms"]]['quote']) + o[kwargs["move"]] + self.placeholder
+                or_where.append(m_statement)
                 m_where.append('(' + ' and '.join(or_where) + ')')
 
-                m_data.extend(list(map(lambda x: x['search'], f_move[0:i])))
+                m_data.extend(list(map(lambda x: x.get('value'), f_move[0:i])))
 
                 if kwargs["move"] == 'find':
                     break
 
-        # calculate other filters
+        s_where = []
+        s_data = []
 
-        # todo: "sub" is the default, but can we add also "regexp" or other criteria?
-        s_where = [self.__whereFilter(col=x['name'], searchcriteria=x.get('searchcriteria', 'sub')) for x in f_search]
-        s_data = [x['search'] for x in f_search]
+        # Nessun fallback ridondante. Uso diretto delle nuove chiavi pulite.
+        for x in f_search:
+            colonna = x.get('field')
+            criterio = x.get('operator', 'icontains')
+            valore = x.get('value')
+
+            if criterio in ['null', 'notnull']:
+                s_where.append(self.__whereFilter(col=colonna, searchcriteria=criterio, search_value=valore))
+                continue
+
+            if criterio in ['in', 'notin']:
+                if isinstance(valore, (list, tuple)):
+                    s_data.extend(valore)
+                else:
+                    s_data.append(valore)
+            else:
+                s_data.append(valore)
+
+            s_where.append(self.__whereFilter(col=colonna, searchcriteria=criterio, search_value=valore))
 
         q_where = []
         if m_where:
@@ -185,11 +318,8 @@ class Datasource:
         }
 
     def whereQuery(self, **kwargs):
-        """
-        Return WHERE and its associated values array.
-        For hibrid or union queries.
-        """
-        more_filters = kwargs['filters'] if 'filters' in kwargs else []
+        more_filters = kwargs.get('filters', [])
+        #more_filters = self.__shim_legacy_json(kwargs.get('filters', []))
         all_filters = self.filters + more_filters
 
         if len(all_filters) > 0:
@@ -198,42 +328,25 @@ class Datasource:
                 move=self.move,
                 dbms=self.dbms
             )
-            return " AND " + q_filters['where'], q_filters['value']
+            return " and " + q_filters['where'], q_filters['value']
         return "", []
 
     def limitPoolQuery(self, default_pool_size=40):
-        """
-        Return just LIMIT correctly formatted for DBMS
-        """
         return "\n" + DBMS_MAP[self.dbms].get("limit", "").format(0, default_pool_size)
 
     def paginateResults(self, final_list, **kwargs):
-        """
-        Paginate results
-        """
         start = kwargs.get('start', self.limit.get('start', 0) if self.limit else 0)
         length = kwargs.get('length', self.limit.get('length', 5) if self.limit else 5)
         return final_list[start : start + length]
 
-    # ===========================================================================================
-
     def selectQuery(self, **kwargs):
-        """
-        returns the select query (with placeholders) and the list of values that match the placeholders
+        more_filters = kwargs.get('filters', [])
+        #more_filters = self.__shim_legacy_json(kwargs.get('filters', []))
 
-        order:
-          columns and direction to order by (default to the constructor order by columns)
-        """
-
-        more_filters = kwargs['filters'] if 'filters' in kwargs else []
-
-        # TODO: consider both parameters passed to this function + constructor
         columns = list(
             map(
-                lambda x: self.__quote(x['name'], DBMS_MAP[self.dbms]['quote']),
+                lambda x: self.__quote(x.get('field'), DBMS_MAP[self.dbms]['quote']),
                 filter(
-                    # lambda x: (x.get("type", "text") != "blob") and (x.get('visible', True)),
-                    # FIXME: this has to be consistent with the table.html columns generator as well
                     lambda x: (x.get("type", "text") != "blob"),
                     self.columns)
             ))
@@ -249,47 +362,31 @@ class Datasource:
 
         order_by = list(
             map(
-                lambda x: self.__quote(
-                    x['name'],
-                    DBMS_MAP[self.dbms]['quote'])
+                lambda x: self.__quote(x.get('field'), DBMS_MAP[self.dbms]['quote'])
                     + " "
                     + self.__invertOrder(
                         x.get("order", "asc"),
                         self.move == 'backwards'
                     ),
-                kwargs['order'] if 'order' in kwargs else self.order
+                kwargs.get('order', self.order)
             ))
 
-        if 'limit' in kwargs:
-            limit_top = self.__limitFilterTop(
-                dbms=self.dbms,
-                start=kwargs['limit'].get("start", 0),
-                length=kwargs['limit'].get("length", 99),
-                columns=columns)
-            limit_bottom = self.__limitFilterBottom(
-                dbms=self.dbms,
-                start=kwargs['limit'].get("start", 0),
-                length=kwargs['limit'].get("length", 99),
-                columns=columns)
-        elif self.limit:
-            limit_top = self.__limitFilterTop(
-                dbms=self.dbms,
-                start=self.limit.get("start", 0),
-                length=self.limit.get("length", 99),
-                columns=columns)
-            limit_bottom = self.__limitFilterBottom(
-                dbms=self.dbms,
-                start=self.limit.get("start", 0),
-                length=self.limit.get("length", 99),
-                columns=columns)
-        else:
-            limit_top = ""
-            limit_bottom = ""
+        limit_top = ""
+        limit_bottom = ""
+        active_limit = kwargs.get('limit', self.limit)
+
+        if active_limit:
+            limit_top = self.__limitFilterTop(dbms=self.dbms, start=active_limit.get("start", 0), length=active_limit.get("length", 99), columns=columns)
+            limit_bottom = self.__limitFilterBottom(dbms=self.dbms, start=active_limit.get("start", 0), length=active_limit.get("length", 99), columns=columns)
 
         query = "select{}\n".format(limit_top)
         query += ",\n".join(list(map(lambda x: "  "+x, columns))) + "\n"
         query += "from\n"
-        query += "  "+self.__quote(self.source, DBMS_MAP[self.dbms]['quote'])+"\n"
+        
+        if self.raw_source:
+            query += "  " + self.source + "\n"
+        else:
+            query += "  " + self.__quote(self.source, DBMS_MAP[self.dbms]['quote']) + "\n"
 
         if (q_filters):
             query += "where\n"
