@@ -1,8 +1,12 @@
 # Sentosa SQL Library
 
-A small Python library that builds parameterized SQL queries for DataTables,
-Access-style pagination, and AI-generated filters.
-Supports PostgreSQL, SQLite, MySQL, and Oracle.
+A Python library to build parameterized SQL queries from plain dicts. I use it mainly for three things:
+
+- DataTables backends;
+- cursor-based pagination (similar to how Microsoft Access works);
+- as a bridge between LLM-generated JSON and the database.
+
+Supports PostgreSQL, SQLite, MySQL and Oracle.
 
 ---
 
@@ -26,11 +30,6 @@ columns = [
     {'field': 'company_name'},
 ]
 
-order = [
-    {'field': 'first_name', 'order': 'asc'},
-    {'field': 'last_name',  'order': 'asc'},
-]
-
 filters = [
     {'field': 'first_name', 'operator': 'icontains', 'value': 'John'},
     {'field': 'last_name',  'operator': 'icontains', 'value': 'Smith'},
@@ -44,30 +43,141 @@ q = Datasource(
 
 query, values = q.selectQuery(
     filters = filters,
-    order   = order,
+    order   = [{'field': 'first_name', 'order': 'asc'}],
     limit   = {'start': 0, 'length': 10},
 )
 
 print(query)
-#select
-#  "id",
-#  "first_name",
-#  "last_name",
-#  "company_name"
-#from
-#  "sample_uk"
-#where
-#  ("first_name" ilike '%' || ? || '%' and "last_name" ilike '%' || ? || '%')
-#order by
-#  "first_name" asc,
-#  "last_name" asc
-#limit 10 offset 0
+# select
+#   "id",
+#   "first_name",
+#   "last_name",
+#   "company_name"
+# from
+#   "sample_uk"
+# where
+#   ("first_name" ilike '%' || ? || '%' and "last_name" ilike '%' || ? || '%')
+# order by
+#   "first_name" asc
+# limit 10 offset 0
 
 print(values)
 # ['John', 'Smith']
 
 rows = execute_db(query, values)
 ```
+
+---
+
+## Using ssll with AI / LLM pipelines
+
+The idea is simple: the LLM parses the user question and returns a JSON with the filters, Pydantic validates the structure, and ssll builds the SQL. The values are always passed as parameters so there is no risk of SQL injection even if the model produces unexpected output.
+
+### Basic flow
+
+```
+user question → LLM → JSON → Pydantic → ssll → parameterized SQL
+```
+
+### Define the Pydantic schema
+
+You tell the LLM exactly which fields and operators it can use. Anything outside the list gets rejected by Pydantic before it reaches the database.
+
+```python
+from pydantic import BaseModel, Field
+from typing import List, Literal
+
+class SQLFilterSchema(BaseModel):
+    field: Literal[
+        'doc_type',
+        'doc_date',
+        'author',
+        'title',
+        'attributes->>supplier',   # JSONB path
+        'attributes->>amount',     # JSONB path
+    ] = Field(description="Column name or JSONB path")
+    operator: Literal[
+        '=', '!=', '>', '>=', '<', '<=',
+        'icontains', 'istarts_with',
+        'in', 'notin', 'null', 'notnull'
+    ] = Field(description="Comparison operator")
+    value: str = Field(description="Value to search for")
+
+class QuerySchema(BaseModel):
+    semantic_query: str = Field(description="Cleaned query for vector/FTS search")
+    sql_filters: List[SQLFilterSchema] = Field(description="SQL filters")
+```
+
+### Call the LLM with structured output
+
+```python
+ai_response = ai_client.models.generate_content(
+    model='gemini-flash',
+    contents=user_question,
+    config=GenerateContentConfig(
+        system_instruction=YOUR_INTENT_PARSER_PROMPT,
+        response_mime_type="application/json",
+        response_schema=QuerySchema,
+        temperature=0.0,
+    )
+)
+parsed = QuerySchema.model_validate_json(ai_response.text)
+```
+
+### Build the WHERE clause
+
+```python
+from ssll import Datasource
+
+filters = [f.model_dump() for f in parsed.sql_filters]
+
+ds = Datasource(
+    source      = 'documents',
+    columns     = columns,
+    dbms        = 'Pg',
+    placeholder = '%s',
+    filters     = filters,
+)
+
+# if you need only the WHERE part to append to your own query:
+where_clause, values = ds.whereQuery()
+# → " and ("doc_type"=%s and "doc_date">=%s and "doc_date"<=%s)"
+# → ['CONTRACT', '2025-01-01', '2025-12-31']
+
+# or the full SELECT:
+query, values = ds.selectQuery()
+```
+
+### A few things that help in practice
+
+**Pass the current date in the prompt.** If you don't, the model tends to guess on things like "this year" or "recent documents" and gets it wrong.
+
+**Give explicit value mappings.** For example tell the model that "contract" must become `doc_type = 'DB_CONTRACT'` exactly. Free-form values produce inconsistent filters.
+
+**Separate semantic from deterministic.** Ask the model to put dates, document types and identifiers in `sql_filters`, and leave the conceptual topic in `semantic_query` for vector or full-text search. Mixing them in the embedding adds noise.
+
+**Always add a fallback.** If the LLM call fails, fall back to empty filters and use the raw question for semantic search.
+
+```python
+try:
+    parsed = QuerySchema.model_validate_json(ai_response.text)
+except Exception:
+    parsed = QuerySchema(semantic_query=user_question, sql_filters=[])
+```
+
+### JSONB fields and value_type
+
+When a JSONB field contains numeric or date values, you need to tell Postgres the type explicitly or it will compare as text. Add `value_type` to the filter:
+
+```python
+{'field': 'attributes->>amount', 'operator': '>=', 'value': '10000', 'value_type': 'numeric'}
+# → ("attributes"->>'amount')::numeric >= %s::numeric
+
+{'field': 'attributes->>expiry_date', 'operator': '<=', 'value': '2025-12-31', 'value_type': 'date'}
+# → ("attributes"->>'expiry_date')::date <= %s::date
+```
+
+Without the cast, `'9' > '10'` in Postgres text comparison, which gives wrong results for numeric ranges.
 
 ---
 
@@ -88,7 +198,7 @@ def table_json():
         {'field': 'company_name'},
     ]
 
-    # Build filters from DataTable per-column search
+    # build filters from DataTable per-column search
     filters = []
     for k in a['columns'].values():
         if k['search']['value']:
@@ -99,7 +209,7 @@ def table_json():
                 'value':    k['search']['value'],
             })
 
-    # Build order from DataTable
+    # build order from DataTable
     order = [
         {'field': columns[int(k['column'])]['field'], 'order': k['dir']}
         for k in a['order'].values()
@@ -137,7 +247,7 @@ def table_json():
 
 ## Access-style pagination
 
-Cursor-based pagination that moves forwards or backwards through a result set, similar to how Microsoft Access navigates records. Useful for large tables where offset pagination is too slow.
+Cursor-based pagination without offset. Useful for large tables where `LIMIT x OFFSET y` gets slow, or when you need to navigate record by record like in Microsoft Access.
 
 ```python
 q = Datasource(
@@ -152,50 +262,27 @@ q = Datasource(
 query, values = q.selectQuery()
 ```
 
-Change `move` to `'backwards'` to go in reverse, or `'find'` to jump to an exact record. Multi-column cursors work too — just add more entries to `filters` with `type='move'`.
+Use `move='backwards'` to go in reverse, or `move='find'` to jump to a specific record. Multi-column cursors are supported - just add more entries to `filters` with `type='move'`.
 
 ---
 
-## AI-generated filters (PostgreSQL)
+## Full-text search (PostgreSQL only)
 
-The library accepts filters as plain dicts, which makes it a natural fit for LLM outputs validated by Pydantic.
+Two operators for full-text search with `websearch_to_tsquery`:
 
+`fts` - for a pre-built `tsvector` column:
 ```python
-# JSON produced by an LLM and validated by Pydantic:
-sql_filters = [
-    {'field': 'm.doc_type',        'operator': '=',         'value': 'CONTRACT'},
-    {'field': 'm.doc_description', 'operator': 'icontains', 'value': 'License'},
-    {'field': 'm.doc_date',        'operator': '>=',        'value': '2025-01-01'},
-    {'field': 'm.doc_date',        'operator': '<=',        'value': '2025-12-31'},
-]
-
-q = Datasource(
-    source      = 'my_view',
-    columns     = columns,
-    dbms        = 'Pg',
-    placeholder = '%s',
-)
-
-query, values = q.selectQuery(filters=sql_filters)
+{'field': 'tsv_content', 'operator': 'fts', 'value': 'oxygen supply'}
+# → "tsv_content" @@ websearch_to_tsquery('italian', %s)
 ```
 
-### Full-text search (PostgreSQL only)
-
-Two operators are available for PostgreSQL full-text search:
-
-`fts` — searches against a pre-built `tsvector` column:
+`fts_query` - builds the tsvector on the fly from a text column:
 ```python
-{'field': 'tsv_content', 'operator': 'fts', 'value': 'contratti'}
-# → tsv_content @@ websearch_to_tsquery('italian', %s)
+{'field': 'description', 'operator': 'fts_query', 'value': 'oxygen supply'}
+# → to_tsvector('italian', coalesce("description", '')) @@ websearch_to_tsquery('italian', %s)
 ```
 
-`fts_query` — builds the tsvector on the fly from a text column:
-```python
-{'field': 'oggetto', 'operator': 'fts_query', 'value': 'contratti'}
-# → to_tsvector('italian', coalesce("oggetto", '')) @@ websearch_to_tsquery('italian', %s)
-```
-
-The default language is `italian`. Override it at construction time:
+Default language is `italian`. You can change it:
 ```python
 q = Datasource(..., fts_language='english')
 ```
@@ -213,13 +300,13 @@ q = Datasource(..., fts_language='english')
 | `icontains` | Case-insensitive substring (`ILIKE`) |
 | `istarts_with` | Case-insensitive prefix |
 | `iends_with` | Case-insensitive suffix |
-| `null` / `notnull` | NULL checks |
+| `null` / `notnull` | NULL checks (no value bound) |
 | `in` / `notin` | List membership |
-| `reverse_in` | Value in a set of columns (`%s IN (col1, col2)`) |
+| `reverse_in` | Value in a set of columns - `%s IN (col1, col2)` |
 | `fts` | Full-text search on tsvector column (Pg only) |
 | `fts_query` | Full-text search on text column (Pg only) |
 
-JSONB column access is supported in PostgreSQL using `->>`  notation in the field name:
+JSONB column access in PostgreSQL uses `field->>key` notation:
 ```python
 {'field': 'metadata->>status', 'operator': '=', 'value': 'active'}
 ```
