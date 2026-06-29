@@ -12,7 +12,7 @@ DBMS_MAP = {
             '<':            '{}<?',
             '<=':           '{}<=?',
             'starts_with':  '{} glob ? || \'*\'',
-            'ends_with':    '{} glob \'*\' || ?',     # <-- Corretto
+            'ends_with':    '{} glob \'*\' || ?',
             'contains':     '{} glob \'*\' || ? || \'*\'',
             'istarts_with': '{} like ? || \'%\'',
             'iends_with':   '{} like \'%\' || ?',
@@ -36,7 +36,7 @@ DBMS_MAP = {
             '<':            '{}<?',
             '<=':           '{}<=?',
             'starts_with':  '{} like ? || \'%\'',
-            'ends_with':    '{} like \'%\' || ?',     # <-- Corretto
+            'ends_with':    '{} like \'%\' || ?',
             'contains':     '{} like \'%\' || ? || \'%\'',
             'istarts_with': '{} ilike ? || \'%\'',
             'iends_with':   '{} ilike \'%\' || ?',
@@ -62,10 +62,10 @@ DBMS_MAP = {
             '<':            '{}<?',
             '<=':           '{}<=?',
             'starts_with':  '{} like binary concat(?, \'%\')',
-            'ends_with':    '{} like binary concat(\'%\', ?)', # <-- Corretto
+            'ends_with':    '{} like binary concat(\'%\', ?)',
             'contains':     '{} like binary concat(\'%\', ?, \'%\')',
             'istarts_with': '{} like concat(?, \'%\')',
-            'iends_with':   '{} like concat(\'%\', ?)',       # <-- Corretto
+            'iends_with':   '{} like concat(\'%\', ?)',
             'icontains':    '{} like concat(\'%\', ?, \'%\')',
             'in':           '{} in ({})',
             'notin':        '{} not in ({})',
@@ -140,7 +140,6 @@ class Datasource:
             return items
             
         for item in items:
-            # 1. Traduzione Chiavi
             if 'name' in item and 'field' not in item:
                 item['field'] = item['name']
             if 'searchcriteria' in item and 'operator' not in item:
@@ -148,7 +147,6 @@ class Datasource:
             if 'search' in item and 'value' not in item:
                 item['value'] = item['search']
                 
-            # 2. Traduzione Operatori (Ho aggiunto anche like e ilike per sicurezza)
             op = item.get('operator')
             if op == 'sub':
                 item['operator'] = 'contains'
@@ -170,7 +168,7 @@ class Datasource:
 
         return quote + name + quote
 
-    def __whereFilter(self, col: str, searchcriteria: str = "icontains", search_value=None) -> str:
+    def __whereFilter(self, col: str, searchcriteria: str = "icontains", search_value=None, value_type: str = "text") -> str:
         """
         given a column name col, the type of search searchcriteria
         returns a single where statement
@@ -180,7 +178,6 @@ class Datasource:
             
         raw_statement = DBMS_MAP[self.dbms]["search_map"][searchcriteria]
 
-        # Gestione specifica per l'operatore IN e NOT IN
         if searchcriteria in ['in', 'notin']:
             if not isinstance(search_value, (list, tuple)):
                 search_value = [search_value] if search_value is not None else []
@@ -199,7 +196,6 @@ class Datasource:
                 raw_statement = raw_statement.replace('%', '%%')
             raw_statement = raw_statement.replace('?', self.placeholder)
 
-        # Gestione specifica per REVERSE IN (OR su più colonne)
         elif searchcriteria == 'reverse_in':
             col_list = [c.strip() for c in col.split(',')]
             parsed_cols = []
@@ -219,14 +215,19 @@ class Datasource:
                 raw_statement = raw_statement.replace('%', '%%')
             raw_statement = raw_statement.replace('?', self.placeholder)
 
-        # Gestione avanzata campi JSONB specifica per PostgreSQL (Pg)
+        # gestione campi json con tipizzazione esplicita
         if self.dbms == 'Pg' and '->>' in col:
             parts = col.split('->>')
             main_column = self.__quote(parts[0].strip(), DBMS_MAP[self.dbms]["quote"])
             json_key = parts[1].strip()
             
-            if searchcriteria in ['>', '>=', '<', '<=']:
+            # Eseguiamo il cast guidato esplicitamente dall'attributo del JSON
+            if value_type == 'numeric':
                 sql_field = f"({main_column}->>'{json_key}')::numeric"
+                raw_statement = raw_statement.replace(self.placeholder, f"{self.placeholder}::numeric")
+            elif value_type == 'date':
+                sql_field = f"({main_column}->>'{json_key}')::date"
+                raw_statement = raw_statement.replace(self.placeholder, f"{self.placeholder}::date")
             else:
                 sql_field = f"{main_column}->>'{json_key}'"
                 
@@ -260,7 +261,6 @@ class Datasource:
     def __conditions(self, **kwargs):
         o = {'find': '=', 'forwards': '>', 'backwards': '<'}
 
-        # Ripristinato 'search' come default per la logica interna
         f_move = list(filter(lambda x: x.get('type', 'search') == 'move',   kwargs['filters']))
         f_search = list(filter(lambda x: x.get('type', 'search') == 'search', kwargs['filters']))
 
@@ -286,14 +286,14 @@ class Datasource:
         s_where = []
         s_data = []
 
-        # Nessun fallback ridondante. Uso diretto delle nuove chiavi pulite.
         for x in f_search:
             colonna = x.get('field')
             criterio = x.get('operator', 'icontains')
             valore = x.get('value')
+            tipo_valore = x.get('value_type', 'text') 
 
             if criterio in ['null', 'notnull']:
-                s_where.append(self.__whereFilter(col=colonna, searchcriteria=criterio, search_value=valore))
+                s_where.append(self.__whereFilter(col=colonna, searchcriteria=criterio, search_value=valore, value_type=tipo_valore))
                 continue
 
             if criterio in ['in', 'notin']:
@@ -304,7 +304,7 @@ class Datasource:
             else:
                 s_data.append(valore)
 
-            s_where.append(self.__whereFilter(col=colonna, searchcriteria=criterio, search_value=valore))
+            s_where.append(self.__whereFilter(col=colonna, searchcriteria=criterio, search_value=valore, value_type=tipo_valore))
 
         q_where = []
         if m_where:
@@ -319,7 +319,6 @@ class Datasource:
 
     def whereQuery(self, **kwargs):
         more_filters = kwargs.get('filters', [])
-        #more_filters = self.__shim_legacy_json(kwargs.get('filters', []))
         all_filters = self.filters + more_filters
 
         if len(all_filters) > 0:
@@ -341,7 +340,6 @@ class Datasource:
 
     def selectQuery(self, **kwargs):
         more_filters = kwargs.get('filters', [])
-        #more_filters = self.__shim_legacy_json(kwargs.get('filters', []))
 
         columns = list(
             map(

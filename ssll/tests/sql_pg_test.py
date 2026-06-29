@@ -251,18 +251,41 @@ class TestJsonbColumns(unittest.TestCase):
         self.assertIn('"data"->>\'name\'', q)
         self.assertIn('ilike', q)
 
-    def test_jsonb_numeric_gt(self):
-        ds = make_ds(filters=[{'field': 'data->>age', 'operator': '>', 'value': 30}])
-        q, v = get_query(ds)
-        self.assertIn('::numeric', q)
-        self.assertIn('"data"->>\'age\'', q)
-
     def test_jsonb_eq(self):
         ds = make_ds(filters=[{'field': 'meta->>status', 'operator': '=', 'value': 'active'}])
         q, v = get_query(ds)
         self.assertIn('"meta"->>\'status\'', q)
         self.assertNotIn('::numeric', q)
+        self.assertNotIn('::date', q)
 
+    def test_jsonb_numeric_gt(self):
+        ds = make_ds(filters=[{'field': 'data->>age', 'operator': '>', 'value': 30, 'value_type': 'numeric'}])
+        q, v = get_query(ds)
+        self.assertIn('::numeric', q)
+        self.assertIn('"data"->>\'age\'', q)
+        self.assertIn('%s::numeric', q)
+        self.assertEqual(v, [30])
+
+    def test_jsonb_date_gte(self):
+        ds = make_ds(filters=[{'field': 'data->>created', 'operator': '>=', 'value': '2025-01-01', 'value_type': 'date'}])
+        q, v = get_query(ds)
+        self.assertIn('::date', q)
+        self.assertIn('"data"->>\'created\'', q)
+        self.assertIn('%s::date', q)
+        self.assertEqual(v, ['2025-01-01'])
+
+    def test_jsonb_text_no_cast(self):
+        ds = make_ds(filters=[{'field': 'data->>name', 'operator': '=', 'value': 'foo'}])
+        q, v = get_query(ds)
+        self.assertNotIn('::numeric', q)
+        self.assertNotIn('::date', q)
+        self.assertEqual(v, ['foo'])
+
+    def test_jsonb_numeric_in_list(self):
+        ds = make_ds(filters=[{'field': 'data->>status', 'operator': 'in', 'value': [1, 2, 3], 'value_type': 'numeric'}])
+        q, v = get_query(ds)
+        self.assertIn('"data"->>\'status\'', q)
+        self.assertEqual(v, [1, 2, 3])
 
 # ---------------------------------------------------------------------------
 # 5. Limit / pagination
@@ -352,9 +375,8 @@ class TestErrorHandling(unittest.TestCase):
             get_query(ds)
 
     def test_invalid_dbms_raises(self):
-        ds = sql.Datasource(source='t', columns=BASE_COLUMNS, dbms='FakeDB')
-        with self.assertRaises(KeyError):
-            get_query(ds)
+        with self.assertRaises(ValueError):
+            sql.Datasource(source='t', columns=BASE_COLUMNS, dbms='FakeDB')
 
     def test_missing_field_in_filter(self):
         """Filter with no 'field' key should raise rather than silently produce bad SQL."""
