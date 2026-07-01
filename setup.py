@@ -5,16 +5,16 @@ def readme():
         return f.read()
 
 setup(
-        name='Sentosa SQL Library',
-        version='0.3',
+        name='filtersql',
+        version='0.4.1',
         description='SQL Backend Library for AI, Datatables and Frontend Apps',
-        url='http://github.com/fthiella/Sentosa-SQL-Library',
+        url='http://github.com/fthiella/filtersql',
         author='Federico Thiella',
         author_email='fthiella@gmail.com',
         license='MIT',
-        packages=['ssll'],
+        packages=['filtersql'],
         zip_safe=False,
-        test_suite='nose.collector',
+#        test_suite='nose.collector',
         tests_require=['nose'],
         include_package_data=True,
         long_description=readme(),

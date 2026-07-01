@@ -1,4 +1,4 @@
-# Sentosa SQL Library
+# filtersql
 
 A Python library to build parameterized SQL queries from plain dicts. I use it mainly for three things:
 
@@ -13,7 +13,7 @@ Supports PostgreSQL, SQLite, MySQL and Oracle.
 ## Install
 
 ```bash
-pip install ssll
+pip install filtersql
 ```
 
 ---
@@ -21,7 +21,7 @@ pip install ssll
 ## Quick start
 
 ```python
-from ssll import Datasource
+from filtersql import Datasource
 
 columns = [
     {'field': 'id'},
@@ -69,14 +69,14 @@ rows = execute_db(query, values)
 
 ---
 
-## Using ssll with AI / LLM pipelines
+## Using filtersql with AI / LLM pipelines
 
-The idea is simple: the LLM parses the user question and returns a JSON with the filters, Pydantic validates the structure, and ssll builds the SQL. The values are always passed as parameters so there is no risk of SQL injection even if the model produces unexpected output.
+The idea is simple: the LLM parses the user question and returns a JSON with the filters, Pydantic validates the structure, and filtersql builds the SQL. The values are always passed as parameters so there is no risk of SQL injection even if the model produces unexpected output.
 
 ### Basic flow
 
 ```
-user question → LLM → JSON → Pydantic → ssll → parameterized SQL
+user question → LLM → JSON → Pydantic → filtersql → parameterized SQL
 ```
 
 ### Define the Pydantic schema
@@ -127,7 +127,7 @@ parsed = QuerySchema.model_validate_json(ai_response.text)
 ### Build the WHERE clause
 
 ```python
-from ssll import Datasource
+from filtersql import Datasource
 
 filters = [f.model_dump() for f in parsed.sql_filters]
 
@@ -184,8 +184,8 @@ Without the cast, `'9' > '10'` in Postgres text comparison, which gives wrong re
 ## Flask + DataTables example
 
 ```python
-from ssll import Datasource
-from ssll.utils import parseDatatableArgs
+from filtersql import Datasource
+from filtersql.utils import parseDatatableArgs
 
 @app.route("/api/table.json")
 def table_json():

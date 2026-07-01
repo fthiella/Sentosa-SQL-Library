@@ -9,7 +9,7 @@ import os
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-import ssll.sql as sql
+import filtersql.sql as sql
 
 
 # ---------------------------------------------------------------------------
