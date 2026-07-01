@@ -157,7 +157,7 @@ class Datasource:
                 
         return items
 
-    def __quote(self, name: str, quote: str) -> str:
+    def _quote(self, name: str, quote: str) -> str:
         """returns a quoted string"""
         if not name:
             raise ValueError(f"field name is missing or empty")
@@ -168,7 +168,7 @@ class Datasource:
 
         return quote + name + quote
 
-    def __whereFilter(self, col: str, searchcriteria: str = "icontains", search_value=None, value_type: str = "text") -> str:
+    def _build_filter(self, col: str, searchcriteria: str = "icontains", search_value=None, value_type: str = "text") -> str:
         """
         given a column name col, the type of search searchcriteria
         returns a single where statement
@@ -202,11 +202,11 @@ class Datasource:
             for c in col_list:
                 if self.dbms == 'Pg' and '->>' in c:
                     parts = c.split('->>')
-                    main_column = self.__quote(parts[0].strip(), DBMS_MAP[self.dbms]["quote"])
+                    main_column = self._quote(parts[0].strip(), DBMS_MAP[self.dbms]["quote"])
                     json_key = parts[1].strip()
                     parsed_cols.append(f"{main_column}->>'{json_key}'")
                 else:
-                    parsed_cols.append(self.__quote(c, DBMS_MAP[self.dbms]["quote"]))
+                    parsed_cols.append(self._quote(c, DBMS_MAP[self.dbms]["quote"]))
             
             return f"{self.placeholder} IN ({', '.join(parsed_cols)})"
             
@@ -218,7 +218,7 @@ class Datasource:
         # gestione campi json con tipizzazione esplicita
         if self.dbms == 'Pg' and '->>' in col:
             parts = col.split('->>')
-            main_column = self.__quote(parts[0].strip(), DBMS_MAP[self.dbms]["quote"])
+            main_column = self._quote(parts[0].strip(), DBMS_MAP[self.dbms]["quote"])
             json_key = parts[1].strip()
             
             # Eseguiamo il cast guidato esplicitamente dall'attributo del JSON
@@ -233,9 +233,9 @@ class Datasource:
                 
             return raw_statement.format(sql_field)
 
-        return raw_statement.format(self.__quote(col, DBMS_MAP[self.dbms]["quote"]))
+        return raw_statement.format(self._quote(col, DBMS_MAP[self.dbms]["quote"]))
 
-    def __limitFilterTop(self, **kwargs):
+    def _build_limit_top(self, **kwargs):
         return DBMS_MAP[kwargs["dbms"]].get("top", "").format(
                     kwargs.get("start", 0),
                     kwargs.get("length", 0),
@@ -250,7 +250,7 @@ class Datasource:
                     kwargs.get("start", 0) + kwargs.get("length", 99)
                 )
 
-    def __invertOrder(self, ord: str, inv: str) -> str:
+    def _invert_order(self, ord: str, inv: str) -> str:
         if ord not in ['asc', 'desc']:
             raise ValueError("order must be 'asc' or 'desc'")
 
@@ -258,7 +258,7 @@ class Datasource:
             return 'desc' if ord == 'asc' else 'asc'
         return ord
 
-    def __conditions(self, **kwargs):
+    def _build_where(self, **kwargs):
         o = {'find': '=', 'forwards': '>', 'backwards': '<'}
 
         f_move = list(filter(lambda x: x.get('type', 'search') == 'move',   kwargs['filters']))
@@ -270,11 +270,11 @@ class Datasource:
         if kwargs["move"] in ['find', 'forwards', 'backwards']:
             for i in range(len(f_move), 0, -1):
                 or_where = list(map(
-                        lambda x: self.__whereFilter(col=x.get('field'), searchcriteria='='),
+                        lambda x: self._build_filter(col=x.get('field'), searchcriteria='='),
                         f_move[0:i-1]
                         ))
                 
-                m_statement = self.__quote(f_move[i-1].get('field'), DBMS_MAP[kwargs["dbms"]]['quote']) + o[kwargs["move"]] + self.placeholder
+                m_statement = self._quote(f_move[i-1].get('field'), DBMS_MAP[kwargs["dbms"]]['quote']) + o[kwargs["move"]] + self.placeholder
                 or_where.append(m_statement)
                 m_where.append('(' + ' and '.join(or_where) + ')')
 
@@ -293,7 +293,7 @@ class Datasource:
             tipo_valore = x.get('value_type', 'text') 
 
             if criterio in ['null', 'notnull']:
-                s_where.append(self.__whereFilter(col=colonna, searchcriteria=criterio, search_value=valore, value_type=tipo_valore))
+                s_where.append(self._build_filter(col=colonna, searchcriteria=criterio, search_value=valore, value_type=tipo_valore))
                 continue
 
             if criterio in ['in', 'notin']:
@@ -304,7 +304,7 @@ class Datasource:
             else:
                 s_data.append(valore)
 
-            s_where.append(self.__whereFilter(col=colonna, searchcriteria=criterio, search_value=valore, value_type=tipo_valore))
+            s_where.append(self._build_filter(col=colonna, searchcriteria=criterio, search_value=valore, value_type=tipo_valore))
 
         q_where = []
         if m_where:
@@ -317,12 +317,12 @@ class Datasource:
             'value': m_data + s_data
         }
 
-    def whereQuery(self, **kwargs):
+    def where(self, **kwargs):
         more_filters = kwargs.get('filters', [])
         all_filters = self.filters + more_filters
 
         if len(all_filters) > 0:
-            q_filters = self.__conditions(
+            q_filters = self._build_where(
                 filters=all_filters,
                 move=self.move,
                 dbms=self.dbms
@@ -330,27 +330,27 @@ class Datasource:
             return " and " + q_filters['where'], q_filters['value']
         return "", []
 
-    def limitPoolQuery(self, default_pool_size=40):
+    def limit_pool(self, default_pool_size=40):
         return "\n" + DBMS_MAP[self.dbms].get("limit", "").format(0, default_pool_size)
 
-    def paginateResults(self, final_list, **kwargs):
+    def paginate(self, final_list, **kwargs):
         start = kwargs.get('start', self.limit.get('start', 0) if self.limit else 0)
         length = kwargs.get('length', self.limit.get('length', 5) if self.limit else 5)
         return final_list[start : start + length]
 
-    def selectQuery(self, **kwargs):
+    def select(self, **kwargs):
         more_filters = kwargs.get('filters', [])
 
         columns = list(
             map(
-                lambda x: self.__quote(x.get('field'), DBMS_MAP[self.dbms]['quote']),
+                lambda x: self._quote(x.get('field'), DBMS_MAP[self.dbms]['quote']),
                 filter(
                     lambda x: (x.get("type", "text") != "blob"),
                     self.columns)
             ))
 
         if len(self.filters + more_filters) > 0:
-            q_filters = self.__conditions(
+            q_filters = self._build_where(
                 filters=self.filters + more_filters,
                 move=self.move,
                 dbms=self.dbms
@@ -360,9 +360,9 @@ class Datasource:
 
         order_by = list(
             map(
-                lambda x: self.__quote(x.get('field'), DBMS_MAP[self.dbms]['quote'])
+                lambda x: self._quote(x.get('field'), DBMS_MAP[self.dbms]['quote'])
                     + " "
-                    + self.__invertOrder(
+                    + self._invert_order(
                         x.get("order", "asc"),
                         self.move == 'backwards'
                     ),
@@ -374,7 +374,7 @@ class Datasource:
         active_limit = kwargs.get('limit', self.limit)
 
         if active_limit:
-            limit_top = self.__limitFilterTop(dbms=self.dbms, start=active_limit.get("start", 0), length=active_limit.get("length", 99), columns=columns)
+            limit_top = self._build_limit_top(dbms=self.dbms, start=active_limit.get("start", 0), length=active_limit.get("length", 99), columns=columns)
             limit_bottom = self.__limitFilterBottom(dbms=self.dbms, start=active_limit.get("start", 0), length=active_limit.get("length", 99), columns=columns)
 
         query = "select{}\n".format(limit_top)
@@ -384,7 +384,7 @@ class Datasource:
         if self.raw_source:
             query += "  " + self.source + "\n"
         else:
-            query += "  " + self.__quote(self.source, DBMS_MAP[self.dbms]['quote']) + "\n"
+            query += "  " + self._quote(self.source, DBMS_MAP[self.dbms]['quote']) + "\n"
 
         if (q_filters):
             query += "where\n"
