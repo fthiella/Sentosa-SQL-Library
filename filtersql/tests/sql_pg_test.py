@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Comprehensive test suite for Sentosa SQL Library — PostgreSQL focus.
+Comprehensive test suite for filtersql — PostgreSQL focus.
 Tests SQL generation without a live DB (no psycopg2 required).
 """
 
@@ -33,7 +33,7 @@ def make_ds(**kwargs):
 
 def get_query(ds, **kwargs):
     """Return (query_str, values) from selectQuery."""
-    return ds.selectQuery(**kwargs)
+    return ds.select(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -417,19 +417,19 @@ class TestWhereQuery(unittest.TestCase):
 
     def test_returns_empty_string_with_no_filters(self):
         ds = make_ds()
-        clause, v = ds.whereQuery()
+        clause, v = ds.where()
         self.assertEqual(clause, '')
         self.assertEqual(v, [])
 
     def test_returns_and_prefixed_clause(self):
         ds = make_ds()
-        clause, v = ds.whereQuery(filters=[{'field': 'id', 'operator': '=', 'value': 5}])
+        clause, v = ds.where(filters=[{'field': 'id', 'operator': '=', 'value': 5}])
         self.assertTrue(clause.strip().upper().startswith('AND'))
         self.assertEqual(v, [5])
 
     def test_combines_instance_and_extra_filters(self):
         ds = make_ds(filters=[{'field': 'id', 'operator': '>', 'value': 0}])
-        clause, v = ds.whereQuery(filters=[{'field': 'last_name', 'operator': 'icontains', 'value': 'sm'}])
+        clause, v = ds.where(filters=[{'field': 'last_name', 'operator': 'icontains', 'value': 'sm'}])
         self.assertIn('"id">%s', clause)
         self.assertIn('ilike', clause)
         self.assertEqual(v, [0, 'sm'])

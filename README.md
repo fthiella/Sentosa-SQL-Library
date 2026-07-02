@@ -41,7 +41,7 @@ q = Datasource(
     dbms    = 'Pg',
 )
 
-query, values = q.selectQuery(
+query, values = q.select(
     filters = filters,
     order   = [{'field': 'first_name', 'order': 'asc'}],
     limit   = {'start': 0, 'length': 10},
@@ -140,12 +140,12 @@ ds = Datasource(
 )
 
 # if you need only the WHERE part to append to your own query:
-where_clause, values = ds.whereQuery()
+where_clause, values = ds.where()
 # → " and ("doc_type"=%s and "doc_date">=%s and "doc_date"<=%s)"
 # → ['CONTRACT', '2025-01-01', '2025-12-31']
 
 # or the full SELECT:
-query, values = ds.selectQuery()
+query, values = ds.select()
 ```
 
 ### A few things that help in practice
@@ -222,13 +222,13 @@ def table_json():
         placeholder = '?',
     )
 
-    query, values = q.selectQuery()
+    query, values = q.select()
     records_total = execute_db("select count(*) from ({}) t".format(query), values)[0][0]
 
-    query, values = q.selectQuery(filters=filters)
+    query, values = q.select(filters=filters)
     records_filtered = execute_db("select count(*) from ({}) t".format(query), values)[0][0]
 
-    query, values = q.selectQuery(
+    query, values = q.select(
         filters = filters,
         order   = order,
         limit   = {'start': int(request.args.get('start')), 'length': int(request.args.get('length'))},
@@ -259,7 +259,7 @@ q = Datasource(
     filters = [{'field': 'id', 'value': last_seen_id, 'type': 'move'}],
 )
 
-query, values = q.selectQuery()
+query, values = q.select()
 ```
 
 Use `move='backwards'` to go in reverse, or `move='find'` to jump to a specific record. Multi-column cursors are supported - just add more entries to `filters` with `type='move'`.

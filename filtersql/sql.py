@@ -104,7 +104,7 @@ DBMS_MAP = {
 
 class Datasource:
     """
-    Sentosa Sql Class
+    filtersql Class
     Sql queries for DataTables, LLM outputs and any other Frontend application
     """
 
@@ -243,7 +243,7 @@ class Datasource:
                     columns=", ".join(kwargs.get("columns", None))
                 )
 
-    def __limitFilterBottom(self, **kwargs):
+    def _build_limit_bottom(self, **kwargs):
         return DBMS_MAP[kwargs["dbms"]].get("limit", "").format(
                     kwargs.get("start", 0),
                     kwargs.get("length", 99),
@@ -375,7 +375,7 @@ class Datasource:
 
         if active_limit:
             limit_top = self._build_limit_top(dbms=self.dbms, start=active_limit.get("start", 0), length=active_limit.get("length", 99), columns=columns)
-            limit_bottom = self.__limitFilterBottom(dbms=self.dbms, start=active_limit.get("start", 0), length=active_limit.get("length", 99), columns=columns)
+            limit_bottom = self._build_limit_bottom(dbms=self.dbms, start=active_limit.get("start", 0), length=active_limit.get("length", 99), columns=columns)
 
         query = "select{}\n".format(limit_top)
         query += ",\n".join(list(map(lambda x: "  "+x, columns))) + "\n"
